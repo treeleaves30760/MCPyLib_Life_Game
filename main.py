@@ -10,15 +10,16 @@ import time
 
 class GameOfLife:
     def __init__(self, mc: MCPyLib, origin_x: int, origin_y: int, origin_z: int,
-                 width: int, height: int):
+                 width: int, height: int, orientation: str = "horizontal"):
         """
         Initialize Game of Life
 
         Args:
             mc: MCPyLib instance
             origin_x, origin_y, origin_z: Starting coordinates for the grid
-            width: Grid width (x-axis)
-            height: Grid height (z-axis)
+            width: Grid width (x-axis for horizontal/vertical_xy, z-axis for vertical_zy)
+            height: Grid height (z-axis for horizontal, y-axis for vertical)
+            orientation: "horizontal" (x-z plane), "vertical_xy" (x-y wall), or "vertical_zy" (z-y wall)
         """
         self.mc = mc
         self.origin_x = origin_x
@@ -26,6 +27,7 @@ class GameOfLife:
         self.origin_z = origin_z
         self.width = width
         self.height = height
+        self.orientation = orientation
 
         # Blocks for alive and dead cells
         self.alive_block = "minecraft:glowstone"
@@ -86,19 +88,45 @@ class GameOfLife:
 
     def render(self):
         """Render the current grid state in Minecraft using bulk edit"""
-        # Build 3D block array for edit() - [x][y][z] structure
-        blocks = []
-        for x in range(self.width):
-            x_layer = []
-            z_layer = []
-            for z in range(self.height):
-                block = self.alive_block if self.grid[x][z] == 1 else self.dead_block
-                z_layer.append(block)
-            x_layer.append(z_layer)  # Single Y layer
-            blocks.append(x_layer)
+        if self.orientation == "horizontal":
+            # Horizontal display on ground (X-Z plane)
+            # blocks[x][y][z] where y=0 (single layer)
+            blocks = []
+            for x in range(self.width):
+                x_layer = []
+                z_layer = []
+                for z in range(self.height):
+                    block = self.alive_block if self.grid[x][z] == 1 else self.dead_block
+                    z_layer.append(block)
+                x_layer.append(z_layer)  # Single Y layer
+                blocks.append(x_layer)
+            self.mc.edit(self.origin_x, self.origin_y, self.origin_z, blocks)
 
-        # Use edit() for high-performance bulk placement
-        self.mc.edit(self.origin_x, self.origin_y, self.origin_z, blocks)
+        elif self.orientation == "vertical_xy":
+            # Vertical wall (X-Y plane) - facing North/South
+            # blocks[x][y][z] where z=0 (single layer depth)
+            blocks = []
+            for x in range(self.width):
+                x_layer = []
+                for y in range(self.height):
+                    block = self.alive_block if self.grid[x][y] == 1 else self.dead_block
+                    x_layer.append([block])  # Single Z layer
+                blocks.append(x_layer)
+            self.mc.edit(self.origin_x, self.origin_y, self.origin_z, blocks)
+
+        elif self.orientation == "vertical_zy":
+            # Vertical wall (Z-Y plane) - facing East/West
+            # blocks[x][y][z] where x=0 (single layer depth)
+            # Need to transpose: grid[x][y] becomes minecraft z and y coords
+            x_layer = []
+            for y in range(self.height):
+                z_layer = []
+                for z in range(self.width):
+                    block = self.alive_block if self.grid[z][y] == 1 else self.dead_block
+                    z_layer.append(block)
+                x_layer.append(z_layer)
+            blocks = [x_layer]  # Single X layer
+            self.mc.edit(self.origin_x, self.origin_y, self.origin_z, blocks)
 
     def load_pattern(self, pattern_name: str):
         """Load a predefined pattern"""
@@ -348,6 +376,29 @@ def get_loop_choice() -> bool:
             return False
 
 
+def get_orientation_choice() -> str:
+    """Ask user for display orientation"""
+    print("\nSelect display orientation:")
+    print("1. Horizontal (ground) - X-Z plane")
+    print("2. Vertical wall (X-Y) - Facing North/South")
+    print("3. Vertical wall (Z-Y) - Facing East/West")
+
+    while True:
+        try:
+            choice = input("\nEnter choice [1-3]: ").strip()
+            if choice == '1':
+                return "horizontal"
+            elif choice == '2':
+                return "vertical_xy"
+            elif choice == '3':
+                return "vertical_zy"
+            else:
+                print("Please enter 1, 2, or 3")
+        except KeyboardInterrupt:
+            print("\n\nDefaulting to horizontal")
+            return "horizontal"
+
+
 def main():
     # Load environment variables
     load_dotenv()
@@ -356,6 +407,7 @@ def main():
     SERVER_IP = os.getenv("SERVER_IP", "127.0.0.1")
     SERVER_PORT = int(os.getenv("SERVER_PORT", "65535"))
     TOKEN = os.getenv("SERVER_TOKEN", "")
+    DELAY = float(os.getenv("DELAY", "0.15"))
 
     if not TOKEN:
         print("Error: SERVER_TOKEN not found in .env file")
@@ -393,6 +445,9 @@ def main():
     preset = PRESETS[choice - 1]
     print(f"\nSelected: {preset.name}")
 
+    # Ask for orientation
+    orientation = get_orientation_choice()
+
     # Ask if user wants to loop
     loop_enabled = get_loop_choice()
     print()
@@ -400,32 +455,76 @@ def main():
     try:
         # Create Game of Life instance with preset configuration
         game = GameOfLife(mc, ORIGIN_X, ORIGIN_Y, ORIGIN_Z,
-                          preset.width, preset.height)
+                          preset.width, preset.height, orientation)
 
         # Apply preset block types
         game.alive_block = preset.alive_block
         game.dead_block = preset.dead_block
 
-        # Build platform base
+        # Build platform/backing and border based on orientation
         print("Building platform...")
-        mc.fill(ORIGIN_X - 1, ORIGIN_Y - 1, ORIGIN_Z - 1,
-                ORIGIN_X + preset.width, ORIGIN_Y - 1, ORIGIN_Z + preset.height,
-                "minecraft:stone")
+        if orientation == "horizontal":
+            # Horizontal: stone base on ground
+            mc.fill(ORIGIN_X - 1, ORIGIN_Y - 1, ORIGIN_Z - 1,
+                    ORIGIN_X + preset.width, ORIGIN_Y - 1, ORIGIN_Z + preset.height,
+                    "minecraft:stone")
 
-        # Build border walls
-        print("Building border...")
-        mc.fill(ORIGIN_X - 2, ORIGIN_Y, ORIGIN_Z - 2,
-                ORIGIN_X + preset.width + 1, ORIGIN_Y + 2, ORIGIN_Z - 2,
-                "minecraft:glass")
-        mc.fill(ORIGIN_X - 2, ORIGIN_Y, ORIGIN_Z + preset.height + 1,
-                ORIGIN_X + preset.width + 1, ORIGIN_Y + 2, ORIGIN_Z + preset.height + 1,
-                "minecraft:glass")
-        mc.fill(ORIGIN_X - 2, ORIGIN_Y, ORIGIN_Z - 2,
-                ORIGIN_X - 2, ORIGIN_Y + 2, ORIGIN_Z + preset.height + 1,
-                "minecraft:glass")
-        mc.fill(ORIGIN_X + preset.width + 1, ORIGIN_Y, ORIGIN_Z - 2,
-                ORIGIN_X + preset.width + 1, ORIGIN_Y + 2, ORIGIN_Z + preset.height + 1,
-                "minecraft:glass")
+            # Build border walls (4 sides)
+            print("Building border...")
+            mc.fill(ORIGIN_X - 2, ORIGIN_Y, ORIGIN_Z - 2,
+                    ORIGIN_X + preset.width + 1, ORIGIN_Y + 2, ORIGIN_Z - 2,
+                    "minecraft:glass")
+            mc.fill(ORIGIN_X - 2, ORIGIN_Y, ORIGIN_Z + preset.height + 1,
+                    ORIGIN_X + preset.width + 1, ORIGIN_Y + 2, ORIGIN_Z + preset.height + 1,
+                    "minecraft:glass")
+            mc.fill(ORIGIN_X - 2, ORIGIN_Y, ORIGIN_Z - 2,
+                    ORIGIN_X - 2, ORIGIN_Y + 2, ORIGIN_Z + preset.height + 1,
+                    "minecraft:glass")
+            mc.fill(ORIGIN_X + preset.width + 1, ORIGIN_Y, ORIGIN_Z - 2,
+                    ORIGIN_X + preset.width + 1, ORIGIN_Y + 2, ORIGIN_Z + preset.height + 1,
+                    "minecraft:glass")
+
+        elif orientation == "vertical_xy":
+            # Vertical X-Y: stone backing behind the wall
+            mc.fill(ORIGIN_X - 1, ORIGIN_Y - 1, ORIGIN_Z - 1,
+                    ORIGIN_X + preset.width, ORIGIN_Y + preset.height, ORIGIN_Z - 1,
+                    "minecraft:stone")
+
+            # Build border frame (4 sides)
+            print("Building border...")
+            mc.fill(ORIGIN_X - 2, ORIGIN_Y - 2, ORIGIN_Z,
+                    ORIGIN_X + preset.width + 1, ORIGIN_Y - 2, ORIGIN_Z,
+                    "minecraft:glass")  # Bottom
+            mc.fill(ORIGIN_X - 2, ORIGIN_Y + preset.height + 1, ORIGIN_Z,
+                    ORIGIN_X + preset.width + 1, ORIGIN_Y + preset.height + 1, ORIGIN_Z,
+                    "minecraft:glass")  # Top
+            mc.fill(ORIGIN_X - 2, ORIGIN_Y - 2, ORIGIN_Z,
+                    ORIGIN_X - 2, ORIGIN_Y + preset.height + 1, ORIGIN_Z,
+                    "minecraft:glass")  # Left
+            mc.fill(ORIGIN_X + preset.width + 1, ORIGIN_Y - 2, ORIGIN_Z,
+                    ORIGIN_X + preset.width + 1, ORIGIN_Y + preset.height + 1, ORIGIN_Z,
+                    "minecraft:glass")  # Right
+
+        elif orientation == "vertical_zy":
+            # Vertical Z-Y: stone backing behind the wall
+            mc.fill(ORIGIN_X - 1, ORIGIN_Y - 1, ORIGIN_Z - 1,
+                    ORIGIN_X - 1, ORIGIN_Y + preset.height, ORIGIN_Z + preset.width,
+                    "minecraft:stone")
+
+            # Build border frame (4 sides)
+            print("Building border...")
+            mc.fill(ORIGIN_X, ORIGIN_Y - 2, ORIGIN_Z - 2,
+                    ORIGIN_X, ORIGIN_Y - 2, ORIGIN_Z + preset.width + 1,
+                    "minecraft:glass")  # Bottom
+            mc.fill(ORIGIN_X, ORIGIN_Y + preset.height + 1, ORIGIN_Z - 2,
+                    ORIGIN_X, ORIGIN_Y + preset.height + 1, ORIGIN_Z + preset.width + 1,
+                    "minecraft:glass")  # Top
+            mc.fill(ORIGIN_X, ORIGIN_Y - 2, ORIGIN_Z - 2,
+                    ORIGIN_X, ORIGIN_Y + preset.height + 1, ORIGIN_Z - 2,
+                    "minecraft:glass")  # Left
+            mc.fill(ORIGIN_X, ORIGIN_Y - 2, ORIGIN_Z + preset.width + 1,
+                    ORIGIN_X, ORIGIN_Y + preset.height + 1, ORIGIN_Z + preset.width + 1,
+                    "minecraft:glass")  # Right
 
         # Store initial pattern
         initial_pattern = preset.pattern
@@ -435,9 +534,10 @@ def main():
         game.load_pattern(preset.pattern)
 
         print(f"\nStarting simulation...")
+        print(f"Orientation: {orientation}")
         print(f"Grid size: {preset.width}x{preset.height}")
         print(f"Generations: {preset.generations}")
-        print(f"Delay: {preset.delay}s")
+        print(f"Delay: {DELAY}s")
 
         if loop_enabled:
             print(f"Mode: Looping (pattern will reset after each cycle)\n")
@@ -466,7 +566,7 @@ def main():
                         game.next_generation()
                         game.render()
                         print(f"Cycle {cycle} - Generation {gen + 1}/{kwargs['generations']}")
-                        time.sleep(kwargs.get('delay', 0.5))
+                        time.sleep(DELAY)
 
                     cycle += 1
 
@@ -474,7 +574,7 @@ def main():
         else:
             print()
 
-        game.run(generations=preset.generations, delay=preset.delay, loop=loop_enabled)
+        game.run(generations=preset.generations, delay=DELAY, loop=loop_enabled)
 
     except KeyboardInterrupt:
         print("\n\nSimulation paused")

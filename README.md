@@ -1,4 +1,4 @@
-# Conway's Game of Life - Minecraft Edition
+# MCPyLib - Conway's Game of Life - Minecraft Edition
 
 A Python implementation of Conway's Game of Life that runs inside Minecraft using MCPyLib. Watch cellular automata come to life with glowing blocks, oscillating patterns, and glider guns that continuously spawn new structures.
 
@@ -7,6 +7,7 @@ A Python implementation of Conway's Game of Life that runs inside Minecraft usin
 - **Real-time cellular automata** simulation rendered in Minecraft
 - **8 classic patterns** including glider, pulsar, glider gun, acorn, and more
 - **5 preset configurations** with different visual themes and grid sizes
+- **Flexible orientation** - display on ground (horizontal) or as vertical walls
 - **Loop mode** to continuously repeat simulations for mesmerizing displays
 - **High-performance rendering** using MCPyLib's bulk edit operations
 - **Interactive menu** for easy pattern selection
@@ -47,7 +48,15 @@ SERVER_IP=127.0.0.1
 SERVER_PORT=65535
 SERVER_TOKEN=your_token_here
 PLAYER_NAME=your_minecraft_username
+DELAY=0.15
 ```
+
+**Configuration Options:**
+- `SERVER_IP` - Minecraft server address (default: 127.0.0.1)
+- `SERVER_PORT` - Server port (default: 65535)
+- `SERVER_TOKEN` - MCPyLib authentication token (required)
+- `PLAYER_NAME` - Your Minecraft username for position detection
+- `DELAY` - Seconds between generations (default: 0.15, adjust for faster/slower animation)
 
 ## Usage
 
@@ -56,10 +65,16 @@ Run the program:
 python main.py
 ```
 
-You'll be presented with an interactive menu to select from 5 preset configurations. After selecting a preset, you'll be asked whether to run the simulation once or loop it indefinitely:
+You'll be presented with an interactive menu to select from 5 preset configurations. After selecting a preset, you'll be asked to choose:
 
-- **Single run** - The simulation runs for the specified number of generations and stops
-- **Loop mode** - The pattern resets and restarts after each cycle, creating an endless animation (press Ctrl+C to stop)
+1. **Display Orientation:**
+   - **Horizontal (ground)** - Traditional view on the ground (X-Z plane)
+   - **Vertical wall (X-Y)** - Standing display facing North/South
+   - **Vertical wall (Z-Y)** - Standing display facing East/West
+
+2. **Run Mode:**
+   - **Single run** - The simulation runs for the specified number of generations and stops
+   - **Loop mode** - The pattern resets and restarts after each cycle, creating an endless animation (press Ctrl+C to stop)
 
 ### Available Presets
 
@@ -102,13 +117,16 @@ The implementation includes these classic Game of Life patterns:
 The program:
 1. Connects to your Minecraft server using MCPyLib
 2. Gets your player position as the origin point
-3. Builds a stone platform and glass border for the simulation
+3. Builds a stone platform/backing and glass border based on chosen orientation:
+   - Horizontal: flat platform on the ground with raised borders
+   - Vertical: stone backing wall with glass frame around the edges
 4. Loads the selected pattern at the center of the grid
 5. Simulates Conway's Game of Life rules:
    - Any live cell with 2-3 neighbors survives
    - Any dead cell with exactly 3 neighbors becomes alive
    - All other cells die or stay dead
 6. Renders each generation using bulk block placement for optimal performance
+7. In loop mode, automatically resets and restarts the pattern after completion
 
 ## Troubleshooting
 
