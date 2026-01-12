@@ -175,23 +175,51 @@ class GameOfLife:
             print(f"Unknown pattern: {pattern_name}")
             print(f"Available patterns: {', '.join(patterns.keys())}")
 
-    def run(self, generations: int = 100, delay: float = 0.5):
-        """Run the simulation for a number of generations"""
+    def run(self, generations: int = 100, delay: float = 0.5, loop: bool = False):
+        """Run the simulation for a number of generations
+
+        Args:
+            generations: Number of generations to run per cycle
+            delay: Delay between generations in seconds
+            loop: If True, restart simulation after completing all generations
+        """
         print(f"Starting Game of Life simulation...")
         print(f"Grid size: {self.width}x{self.height}")
         print(f"Location: ({self.origin_x}, {self.origin_y}, {self.origin_z})")
 
-        # Initial render
-        self.render()
-        time.sleep(2)  # Wait 2 seconds to see initial state
+        if loop:
+            print(f"Mode: Looping (Press Ctrl+C to stop)")
+        else:
+            print(f"Mode: Single run")
 
-        for gen in range(generations):
-            self.next_generation()
+        cycle = 1
+        while True:
+            if loop:
+                print(f"\n{'='*40}")
+                print(f"Cycle {cycle}")
+                print(f"{'='*40}\n")
+
+            # Initial render
             self.render()
-            print(f"Generation {gen + 1}/{generations}")
-            time.sleep(delay)
+            time.sleep(2)  # Wait 2 seconds to see initial state
 
-        print("Simulation complete!")
+            for gen in range(generations):
+                self.next_generation()
+                self.render()
+                if loop:
+                    print(f"Cycle {cycle} - Generation {gen + 1}/{generations}")
+                else:
+                    print(f"Generation {gen + 1}/{generations}")
+                time.sleep(delay)
+
+            if not loop:
+                print("Simulation complete!")
+                break
+
+            # Reset pattern for next cycle
+            print(f"\nCycle {cycle} complete! Resetting pattern...")
+            cycle += 1
+            time.sleep(1)  # Brief pause between cycles
 
 
 class Preset:
@@ -304,6 +332,22 @@ def get_user_choice() -> int:
             return 0
 
 
+def get_loop_choice() -> bool:
+    """Ask user if they want to loop the simulation"""
+    while True:
+        try:
+            choice = input("\nLoop simulation? (y/n): ").strip().lower()
+            if choice in ['y', 'yes']:
+                return True
+            elif choice in ['n', 'no']:
+                return False
+            else:
+                print("Please enter 'y' or 'n'")
+        except KeyboardInterrupt:
+            print("\n\nDefaulting to single run")
+            return False
+
+
 def main():
     # Load environment variables
     load_dotenv()
@@ -347,7 +391,11 @@ def main():
 
     # Get selected preset
     preset = PRESETS[choice - 1]
-    print(f"\nSelected: {preset.name}\n")
+    print(f"\nSelected: {preset.name}")
+
+    # Ask if user wants to loop
+    loop_enabled = get_loop_choice()
+    print()
 
     try:
         # Create Game of Life instance with preset configuration
@@ -379,6 +427,9 @@ def main():
                 ORIGIN_X + preset.width + 1, ORIGIN_Y + 2, ORIGIN_Z + preset.height + 1,
                 "minecraft:glass")
 
+        # Store initial pattern
+        initial_pattern = preset.pattern
+
         # Load pattern and run simulation
         print(f"Loading pattern: {preset.pattern}")
         game.load_pattern(preset.pattern)
@@ -386,9 +437,44 @@ def main():
         print(f"\nStarting simulation...")
         print(f"Grid size: {preset.width}x{preset.height}")
         print(f"Generations: {preset.generations}")
-        print(f"Delay: {preset.delay}s\n")
+        print(f"Delay: {preset.delay}s")
 
-        game.run(generations=preset.generations, delay=preset.delay)
+        if loop_enabled:
+            print(f"Mode: Looping (pattern will reset after each cycle)\n")
+
+            # Override run method to reset pattern in loop mode
+            original_run = game.run
+            def run_with_reset(*args, **kwargs):
+                cycle = 1
+                while True:
+                    if cycle > 1:
+                        print(f"\nCycle {cycle} - Resetting pattern...")
+                        game.load_pattern(initial_pattern)
+                        time.sleep(1)
+
+                    print(f"\n{'='*40}")
+                    print(f"Cycle {cycle}")
+                    print(f"{'='*40}\n")
+
+                    # Run single cycle without loop parameter
+                    kwargs_copy = kwargs.copy()
+                    kwargs_copy['loop'] = False
+                    game.render()
+                    time.sleep(2)
+
+                    for gen in range(kwargs['generations']):
+                        game.next_generation()
+                        game.render()
+                        print(f"Cycle {cycle} - Generation {gen + 1}/{kwargs['generations']}")
+                        time.sleep(kwargs.get('delay', 0.5))
+
+                    cycle += 1
+
+            game.run = run_with_reset
+        else:
+            print()
+
+        game.run(generations=preset.generations, delay=preset.delay, loop=loop_enabled)
 
     except KeyboardInterrupt:
         print("\n\nSimulation paused")

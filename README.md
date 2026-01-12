@@ -7,6 +7,7 @@ A Python implementation of Conway's Game of Life that runs inside Minecraft usin
 - **Real-time cellular automata** simulation rendered in Minecraft
 - **8 classic patterns** including glider, pulsar, glider gun, acorn, and more
 - **5 preset configurations** with different visual themes and grid sizes
+- **Loop mode** to continuously repeat simulations for mesmerizing displays
 - **High-performance rendering** using MCPyLib's bulk edit operations
 - **Interactive menu** for easy pattern selection
 - **Automatic platform building** with glass borders for better viewing
@@ -55,7 +56,10 @@ Run the program:
 python main.py
 ```
 
-You'll be presented with an interactive menu to select from 5 preset configurations:
+You'll be presented with an interactive menu to select from 5 preset configurations. After selecting a preset, you'll be asked whether to run the simulation once or loop it indefinitely:
+
+- **Single run** - The simulation runs for the specified number of generations and stops
+- **Loop mode** - The pattern resets and restarts after each cycle, creating an endless animation (press Ctrl+C to stop)
 
 ### Available Presets
 
